@@ -1,0 +1,64 @@
+import pandas as pd
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Sample user-item rating data (replace this with your data)
+ratings_data = pd.DataFrame({
+    'user_id': [1, 1, 2, 2, 3, 3, 4, 4],
+    'item_id': [1, 2, 2, 3, 3, 4, 1, 4],
+    'rating': [5, 4, 5, 3, 4, 2, 3, 5]
+})
+
+# Create a user-item matrix
+user_item_matrix = ratings_data.pivot_table(index='user_id', columns='item_id', values='rating', fill_value=0)
+
+# Calculate cosine similarity between users
+user_similarity_matrix = cosine_similarity(user_item_matrix)
+
+# Function to get collaborative filtering recommendations for a user
+def get_user_based_recommendations(user_id, user_item_matrix, user_similarity_matrix, n_recommendations=2):
+    user_index = user_item_matrix.index.get_loc(user_id) # Get the correct 0-based index for the user
+    similarities = user_similarity_matrix[user_index]
+
+    # Find the indices of users with highest similarity (excluding the user itself)
+    similar_users_indices = similarities.argsort()[::-1][1:n_recommendations+1]
+
+    # Aggregate items liked by similar users
+    recommended_items = []
+    for index in similar_users_indices:
+        liked_items = user_item_matrix.iloc[index][user_item_matrix.iloc[index] > 0].index
+        user_items = user_item_matrix.iloc[user_index][user_item_matrix.iloc[user_index] > 0].index
+        new_items = set(liked_items) - set(user_items)
+        recommended_items.extend(new_items)
+
+    return recommended_items[:n_recommendations]
+
+# Example: Get user-based collaborative filtering recommendations for user 1
+user_id_to_recommend = 1
+user_based_recommendations = get_user_based_recommendations(user_id_to_recommend, user_item_matrix, user_similarity_matrix)
+print(f"User-Based Collaborative Filtering Recommendations for User {user_id_to_recommend}: {user_based_recommendations}")
+
+# Calculate cosine similarity between items
+item_similarity_matrix = cosine_similarity(user_item_matrix.T)
+
+# Function to get item-based collaborative filtering recommendations for a user
+def get_item_based_recommendations(user_id, user_item_matrix, item_similarity_matrix, n_recommendations=2):
+    user_index = user_item_matrix.index.get_loc(user_id) # Get the correct 0-based index for the user
+
+    # Find items that the user has not rated
+    unrated_items = user_item_matrix.columns[user_item_matrix.iloc[user_index] == 0]
+
+    # Calculate the weighted average of item ratings based on similarity
+    item_scores = item_similarity_matrix.T.dot(user_item_matrix.iloc[user_index]) / (item_similarity_matrix.T.dot(user_item_matrix.iloc[user_index].abs()) + 1e-10)
+
+    # Convert item_scores to a pandas Series with item IDs as index
+    item_scores = pd.Series(item_scores, index=user_item_matrix.columns)
+
+    # Sort items by predicted score and get top recommendations
+    # Use the item IDs from unrated_items to index item_scores
+    recommended_items = item_scores.loc[unrated_items]
+
+    return recommended_items.sort_values(ascending=False).index.tolist()[:n_recommendations]
+
+# Example: Get item-based collaborative filtering recommendations for user 1
+item_based_recommendations = get_item_based_recommendations(user_id_to_recommend, user_item_matrix, item_similarity_matrix)
+print(f"Item-Based Collaborative Filtering Recommendations for User {user_id_to_recommend}: {item_based_recommendations}")
